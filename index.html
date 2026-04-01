@@ -530,17 +530,25 @@
         try {
             const querySnapshot = await getDocs(query(scoresColRef, orderBy("score", "desc")));
             const data = [];
-            data.push(["排名", "姓名", "總得分", "正確項數", "參賽時間"]);
+            
+            // 1. 新增表頭：「每分鐘字數(WPM)」
+            data.push(["排名", "姓名", "總得分", "正確項數", "每分鐘字數(WPM)", "參賽時間"]);
 
             let rank = 1;
             querySnapshot.forEach((docSnap) => {
                 const item = docSnap.data();
                 const date = item.timestamp ? item.timestamp.toDate().toLocaleString('zh-TW') : "無紀錄";
+                
+                // 2. 動態計算該筆紀錄的 WPM (利用正確字數與目前設定的比賽時間)
+                const wpm = Math.round((item.words / gameTimeLimit) * 60);
+
+                // 3. 將 WPM 插入到匯出資料中
                 data.push([
                     rank++,
                     item.username,
                     item.score,
                     item.words,
+                    wpm,
                     date
                 ]);
             });
@@ -554,7 +562,8 @@
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "打字競賽成績單");
 
-            const wscols = [{wch: 6}, {wch: 15}, {wch: 10}, {wch: 10}, {wch: 25}];
+            // 4. 調整欄位寬度，多加一個 {wch: 15} 給 WPM 欄位
+            const wscols = [{wch: 6}, {wch: 15}, {wch: 10}, {wch: 10}, {wch: 16}, {wch: 25}];
             worksheet['!cols'] = wscols;
 
             const fileName = `班級打字競賽成績_${new Date().toLocaleDateString().replace(/\//g, '-')}.xlsx`;
@@ -568,7 +577,6 @@
             btn.innerHTML = originalText;
         }
     }
-
     // 事件監聽：開始按鈕 (修改為進入立即計時)
     document.getElementById('start-btn').addEventListener('click', () => {
         const username = document.getElementById('username-input').value.trim();
