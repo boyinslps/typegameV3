@@ -458,20 +458,38 @@
         document.getElementById('summary-wpm').innerText = finalWpm;
 
         const recordMsg = document.getElementById('new-record-msg');
-        recordMsg.classList.add('hidden');
-
+        // 預設將訊息隱藏，並重置基礎樣式
+        recordMsg.className = "font-bold mb-4 hidden"; 
+        
+        // 【Firebase 資料庫比對邏輯】：只在「破紀錄」或「第一次玩」時顯示提示與上傳
         if (totalScore > 0 && totalScore > personalBest) {
+            
+            if (personalBest === 0) {
+                // 第一次建立成績
+                recordMsg.innerText = `🎉 恭喜建立你的第一個最高分紀錄：${totalScore} 分！`;
+                recordMsg.classList.add('text-amber-500');
+            } else {
+                // 突破歷史最高分
+                const improvement = totalScore - personalBest;
+                recordMsg.innerText = `🏆 破紀錄啦！比歷史最高分進步了 ${improvement} 分！`;
+                recordMsg.classList.add('text-emerald-500');
+            }
+
+            // 顯示鼓勵文字
+            recordMsg.classList.remove('hidden');
+
             try {
+                // 上傳覆蓋 Firebase 資料庫
                 await setDoc(doc(db, 'scores', currentUser.uid), {
                     username, score: totalScore, words: Math.floor(correctWordCount), timestamp: serverTimestamp()
                 });
-                personalBest = totalScore; 
-                recordMsg.classList.remove('hidden'); 
-                confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 } });
+                personalBest = totalScore; // 更新本地端最高分紀錄
+                confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 } }); // 盛大灑花
             } catch (e) {
                 console.error("更新成績失敗", e);
             }
         }
+        // 如果沒破紀錄 (totalScore <= personalBest)，則什麼都不做，訊息框保持隱藏
 
         setTimeout(() => {
             document.getElementById('summary-panel').classList.remove('hidden');
