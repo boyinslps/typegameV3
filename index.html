@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>班級打字競賽 - 四年級防弊完整版</title>
+    <title>班級打字競賽 </title>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
     <!-- 引入 SheetJS 用於匯出 Excel -->
@@ -85,9 +86,8 @@
         </div>
     </div>
 
-    <!-- 結算畫面 -->
-    <div id="summary-panel" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
-        <div class="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl text-center transform transition-all pop-in">
+<div id="summary-panel" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
+        <div id="score-card" class="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl text-center transform transition-all pop-in">
             <h2 class="text-2xl font-bold text-slate-500 mb-1" id="summary-name">挑戰者</h2>
             <div class="text-7xl mb-2 drop-shadow-md" id="summary-badge-icon">🐢</div>
             <h3 class="text-3xl font-black text-indigo-700 mb-2" id="summary-badge-title">烏龜</h3>
@@ -99,22 +99,7 @@
                     <div class="text-2xl font-black text-emerald-700" id="summary-words">0</div>
                 </div>
                 <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-                    <div class="text-xs text-blue-600 font-bold mb-1">正確率</div>
-                    <div class="text-2xl font-black text-blue-700"><span id="summary-accuracy">0</span>%</div>
-                </div>
-                <div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-                    <div class="text-xs text-indigo-600 font-bold mb-1">速度 WPM</div>
-                    <div class="text-2xl font-black text-indigo-700" id="summary-wpm">0</div>
-                </div>
-            </div>
-
-            <p id="new-record-msg" class="text-amber-500 font-bold mb-4 hidden">🎉 恭喜打破歷史最高分紀錄！</p>
-
-            <button id="restart-btn" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold text-xl hover:bg-indigo-700 transition shadow-lg hover:shadow-indigo-500/40">
-                🔄 再玩一次
-            </button>
-        </div>
-    </div>
+                    <div class="text-xs text-blue-600 font-bold mb-1
 
     <!-- 教師驗證 -->
     <div id="admin-auth-panel" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[80]">
@@ -494,6 +479,118 @@
         setTimeout(() => {
             document.getElementById('summary-panel').classList.remove('hidden');
         }, 500);
+        
+    }
+    async function finishGame() {
+        isFinished = true; clearInterval(timerInterval);
+        document.getElementById('hidden-input').disabled = true;
+        document.getElementById('timer').textContent = "時間到！";
+        
+        const finalWpm = Math.round((correctWordCount / gameTimeLimit) * 60);
+        let accuracy = 100;
+        if (totalKeystrokes > 0) {
+            accuracy = Math.round(((totalKeystrokes - totalErrors) / totalKeystrokes) * 100);
+            if (accuracy < 0) accuracy = 0;
+        }
+
+        const badge = getAnimalBadge(finalWpm);
+        const username = document.getElementById('username-input').value || '挑戰者';
+        
+        document.getElementById('summary-name').innerText = username;
+        document.getElementById('summary-badge-icon').innerText = badge.icon;
+        document.getElementById('summary-badge-title').innerText = badge.title;
+        document.getElementById('summary-badge-quote').innerText = badge.quote;
+        document.getElementById('summary-words').innerText = Math.floor(correctWordCount);
+        document.getElementById('summary-accuracy').innerText = accuracy;
+        document.getElementById('summary-wpm').innerText = finalWpm;
+
+        const recordMsg = document.getElementById('new-record-msg');
+        // 預設將訊息隱藏，並重置基礎樣式
+        recordMsg.className = "font-bold mb-4 hidden"; 
+        
+        // 【Firebase 資料庫比對邏輯】：只在「破紀錄」或「第一次玩」時顯示提示與上傳
+        if (totalScore > 0 && totalScore > personalBest) {
+            
+            if (personalBest === 0) {
+                // 第一次建立成績
+                recordMsg.innerText = `🎉 恭喜建立你的第一個最高分紀錄：${totalScore} 分！`;
+                recordMsg.classList.add('text-amber-500');
+            } else {
+                // 突破歷史最高分
+                const improvement = totalScore - personalBest;
+                recordMsg.innerText = `🏆 破紀錄啦！比歷史最高分進步了 ${improvement} 分！`;
+                recordMsg.classList.add('text-emerald-500');
+            }
+
+            // 顯示鼓勵文字
+            recordMsg.classList.remove('hidden');
+
+            try {
+                // 上傳覆蓋 Firebase 資料庫
+                await setDoc(doc(db, 'scores', currentUser.uid), {
+                    username, score: totalScore, words: Math.floor(correctWordCount), timestamp: serverTimestamp()
+                });
+                personalBest = totalScore; // 更新本地端最高分紀錄
+                confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 } }); // 盛大灑花
+            } catch (e) {
+                console.error("更新成績失敗", e);
+            }
+        }
+        // 如果沒破紀錄 (totalScore <= personalBest)，則什麼都不做，訊息框保持隱藏
+
+        setTimeout(() => {
+            document.getElementById('summary-panel').classList.remove('hidden');
+        }, 500);
+        
+        // 綁定下載圖片按鈕的點擊事件
+    const downloadJpgBtn = document.getElementById('download-jpg-btn');
+    if (downloadJpgBtn) {
+        downloadJpgBtn.addEventListener('click', async () => {
+            const btn = downloadJpgBtn;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "⏳ 處理中...";
+            btn.disabled = true;
+
+            // 抓取我們剛剛設定的白色卡片區塊
+            const scoreCard = document.getElementById('score-card');
+
+            try {
+                // 為了截圖完美，暫時隱藏下方的按鈕區 (這樣圖片裡就不會有按鈕了)
+                const buttonsDiv = btn.parentElement;
+                buttonsDiv.style.display = 'none';
+
+                // 使用 html2canvas 進行截圖
+                const canvas = await html2canvas(scoreCard, {
+                    scale: 2, // 設定放大倍率，讓畫質更清晰
+                    backgroundColor: '#ffffff', // 確保背景是白色的
+                    useCORS: true // 允許載入外部資源 (例如 emoji 或字體)
+                });
+
+                // 截圖完成後，把按鈕區恢復顯示
+                buttonsDiv.style.display = 'flex'; 
+
+                // 將 Canvas 轉換為 JPG 格式 (品質設為 0.9)
+                const imgData = canvas.toDataURL('image/jpeg', 0.9);
+
+                // 產生一個隱藏的 <a> 標籤來觸發下載
+                const link = document.createElement('a');
+                const username = document.getElementById('username-input').value || '挑戰者';
+                const dateStr = new Date().toLocaleDateString().replace(/\//g, '');
+                
+                link.download = `打字成績_${username}_${dateStr}.jpg`;
+                link.href = imgData;
+                link.click(); // 自動點擊下載
+
+            } catch (error) {
+                console.error("產生圖片失敗：", error);
+                alert("圖片產生失敗，請稍後再試！");
+            } finally {
+                // 恢復按鈕狀態
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        });
+    }
     }
 
     function updateLeaderboardUI(scores) {
